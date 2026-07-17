@@ -1,12 +1,13 @@
 """
 Deterministic CSV loading and column mapping.
 
-Clay exports don't have a fixed shape: which column holds the Claygent claim
-data and which holds the source URL is whatever the user picked when they
-built their table (see README - Claygent output can land in a raw JSON blob
-column via a JSON_EXTRACT formula, or as manually-selected fields via Clay's
-response side panel, or both). This module never assumes a header name -
-callers always pass the column names explicitly.
+A real Clay CSV export never carries the raw Claygent JSON response with
+data in it - that column exports blank. Only the columns a user manually
+added from the side panel (picking which JSON keys to expose) actually have
+values. So a row's claim isn't one blob column to parse; it's however many
+pre-extracted columns the user picked, under whatever names they gave them.
+This module never assumes a header name or a fixed column count - callers
+always pass the column names explicitly.
 """
 
 from __future__ import annotations
@@ -29,17 +30,17 @@ def parse_csv_rows(csv_text: str) -> list[dict[str, str]]:
 
 def map_rows(
     rows: list[dict[str, str]],
-    claim_column: str,
+    claim_columns: list[str],
     source_url_column: str,
 ) -> list[MappedRow]:
-    """Pull the claim text and source URL out of each row by column name.
+    """Pull the claim column values and source URL out of each row by name.
 
-    Raises KeyError up front (before any network/LLM cost is spent) if either
+    Raises KeyError up front (before any network/LLM cost is spent) if any
     configured column is missing from the CSV's actual headers.
     """
     if rows:
         headers = set(rows[0])
-        missing = {claim_column, source_url_column} - headers
+        missing = (set(claim_columns) | {source_url_column}) - headers
         if missing:
             raise KeyError(f"column(s) {sorted(missing)} not found in CSV headers: {sorted(headers)}")
 
@@ -47,7 +48,7 @@ def map_rows(
         MappedRow(
             row_index=index,
             fields=row,
-            claim_raw=row.get(claim_column, ""),
+            claim_fields={column: row.get(column, "") for column in claim_columns},
             source_url=row.get(source_url_column, ""),
         )
         for index, row in enumerate(rows)

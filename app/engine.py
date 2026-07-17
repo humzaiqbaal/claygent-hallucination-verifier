@@ -13,10 +13,10 @@ import csv
 import io
 from dataclasses import dataclass, field
 
-from app.claim_parser import parse_claim
+from app.claim_parser import extract_claim
 from app.csv_mapper import map_rows, parse_csv_rows
 from app.fetcher import fetch_source
-from app.schema import FETCH_FAILED, MALFORMED_JSON, UNVERIFIABLE, RowResult
+from app.schema import FETCH_FAILED, NO_CLAIM_DATA, RowResult
 from app.verifiers import ClaimVerifier
 
 # Rough $/1M token pricing for cost estimation. Update as pricing changes;
@@ -86,51 +86,35 @@ def estimate_batch_cost(
 
 def run_batch(
     rows: list[dict[str, str]],
-    claim_column: str,
+    claim_columns: list[str],
     source_url_column: str,
     verifier: ClaimVerifier,
-    claim_fields: list[str] | None = None,
 ) -> BatchResult:
-    """Verify one Claygent claim per row against its row's source URL.
+    """Verify each row's pre-extracted claim columns against its source URL.
 
-    Per row: parse the claim JSON (MALFORMED_JSON on failure) -> fetch the
-    source URL (FETCH_FAILED on any non-OK fetch status) -> ask the verifier
-    whether the page text supports the claim. Each row produces exactly one
-    RowResult, in input order, so callers can zip(rows, batch.results).
+    Per row: pull non-blank values out of the configured claim columns
+    (NO_CLAIM_DATA if every one of them is blank) -> fetch the source URL
+    (FETCH_FAILED on any non-OK fetch status) -> ask the verifier whether the
+    page text supports the claim. Each row produces exactly one RowResult,
+    in input order, so callers can zip(rows, batch.results).
     """
-    mapped_rows = map_rows(rows, claim_column=claim_column, source_url_column=source_url_column)
+    mapped_rows = map_rows(rows, claim_columns=claim_columns, source_url_column=source_url_column)
     batch = BatchResult()
 
     for mapped in mapped_rows:
-        extraction = parse_claim(mapped.claim_raw)
-        if extraction.parse_error:
+        extraction = extract_claim(mapped.claim_fields)
+        if extraction.is_empty:
             batch.results.append(
                 RowResult(
                     row_index=mapped.row_index,
-                    verdict=MALFORMED_JSON,
-                    failure_detail=(
-                        f"could not parse claim as a JSON object: {extraction.raw_text[:200]!r}"
-                    ),
+                    verdict=NO_CLAIM_DATA,
+                    failure_detail=f"claim columns {sorted(mapped.claim_fields)} were all blank for this row",
                     source_url=mapped.source_url,
                 )
             )
             continue
 
         claim = extraction.fields
-        if claim_fields:
-            claim = {key: value for key, value in claim.items() if key in claim_fields}
-
-        if not claim:
-            batch.results.append(
-                RowResult(
-                    row_index=mapped.row_index,
-                    verdict=UNVERIFIABLE,
-                    failure_detail="no string claim fields left to verify after filtering",
-                    source_url=mapped.source_url,
-                )
-            )
-            continue
-
         fetch_result = fetch_source(mapped.source_url)
         if fetch_result.status != "OK":
             batch.results.append(

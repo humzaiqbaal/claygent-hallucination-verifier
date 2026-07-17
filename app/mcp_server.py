@@ -28,25 +28,27 @@ mcp = FastMCP("claygent-verifier")
 @mcp.tool()
 def verify_claygent_csv(
     csv_path: str,
-    claim_column: str,
+    claim_columns: list[str],
     source_url_column: str,
-    claim_fields: list[str] | None = None,
     model: str = DEFAULT_MODEL,
     out_path: str | None = None,
 ) -> dict:
     """Re-verify Claygent claims in a Clay export CSV against each row's source URL.
 
-    For every row: parses the claim column as JSON (flagging MALFORMED_JSON if
-    Claygent didn't return valid JSON), fetches the source_url_column's URL
-    (flagging FETCH_FAILED if unreachable/paywalled/JS-rendered), and asks
-    Claude whether the fetched page text actually supports the claim
-    (MATCH / MISMATCH / UNVERIFIABLE).
+    For every row: pulls non-blank values from claim_columns (flagging
+    NO_CLAIM_DATA if every one of them is blank for that row - the
+    real-world signature of a failed Claygent extraction, since a Clay CSV
+    export never carries the raw response with data in it), fetches the
+    source_url_column's URL (flagging FETCH_FAILED if unreachable/paywalled/
+    JS-rendered), and asks Claude whether the fetched page text actually
+    supports the claim (MATCH / MISMATCH / UNVERIFIABLE).
 
     Args:
         csv_path: path to the Clay export CSV.
-        claim_column: column holding the Claygent claim JSON blob.
+        claim_columns: the already-extracted field columns to verify (whatever
+            was manually selected in Claygent's side panel, e.g.
+            ["funding_series", "is_confirmed"]).
         source_url_column: column holding the row's source URL.
-        claim_fields: optional list of claim keys to verify (default: all string fields).
         model: Claude model to use for verification.
         out_path: if given, writes the verified CSV (original columns plus
             verification_* columns) to this path.
@@ -64,10 +66,9 @@ def verify_claygent_csv(
     verifier = ClaudeClaimVerifier(model=model)
     batch = run_batch(
         rows,
-        claim_column=claim_column,
+        claim_columns=claim_columns,
         source_url_column=source_url_column,
         verifier=verifier,
-        claim_fields=claim_fields,
     )
 
     result = {

@@ -1,0 +1,4 @@
+row_id,company_name,claygent_extraction,source_url
+1,Acme Robotics,"{""company_name"": ""Acme Robotics"", ""signal_type"": ""funding"", ""funding_series"": ""Series B"", ""is_confirmed"": ""CONFIRMED""}",https://example.com/news/acme-robotics-series-b
+2,Nimbus Analytics,"{""company_name"": ""Nimbus Analytics"", ""signal_type"": ""funding"", ""funding_series"": ""Series A"", ""is_confirmed"": ""RUMOR""}",https://example.com/news/nimbus-analytics-seed
+3,Vertex Cloud,"{""company_name"": ""Vertex Cloud"", ""signal_type"": ""funding"", ""funding_series"": ""Series C"", ""is_confirmed"": ""CONFIRMED""}",https://example.com/news/vertex-cloud-series-c
